@@ -190,7 +190,7 @@ export function usePost(slug: string | null) {
             id, 
             title, 
             slug, 
-            content, 
+            cogtent, 
             excerpt, 
             featured_image, 
             published, 
