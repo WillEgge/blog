@@ -183,6 +183,7 @@ export function usePost(slug: string | null) {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
+        // Use a non-null assertion (!) since we've already checked slug isn't null
         const { data, error } = await supabase
           .from('posts')
           .select(
@@ -190,7 +191,7 @@ export function usePost(slug: string | null) {
             id, 
             title, 
             slug, 
-            cogtent, 
+            content, 
             excerpt, 
             featured_image, 
             published, 
@@ -201,13 +202,13 @@ export function usePost(slug: string | null) {
             )
           `
           )
-          .eq('slug', slug)
+          .eq('slug', slug!)
           .single();
 
         if (error) throw error;
 
         setState({
-          data: data as Post,
+          data: data as unknown as Post,
           loading: false,
           error: null,
         });
