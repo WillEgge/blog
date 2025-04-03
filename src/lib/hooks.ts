@@ -15,23 +15,24 @@ import {
   Profile,
   ResponseState,
 } from '@/types/schema';
+import { Session, User } from '@supabase/supabase-js';
 
 // Authentication hooks
 export function useAuth() {
-  const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get the initial session and user
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for changes to the session and user
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -43,7 +44,7 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch the profile when the user changes
+  // Fetch user profile when user changes
   useEffect(() => {
     async function getProfile() {
       if (!user) {
@@ -63,7 +64,18 @@ export function useAuth() {
           return;
         }
 
-        setProfile(data);
+        // Convert Supabase data to match Profile type
+        const profileData: Profile = {
+          id: data.id,
+          username: data.username,
+          display_name: data.display_name || undefined,
+          avatar_url: data.avatar_url || undefined,
+          bio: data.bio || undefined,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        };
+
+        setProfile(profileData);
       } catch (error) {
         console.error('Error fetching profile:', error);
       }
@@ -82,27 +94,32 @@ export function useAuth() {
     return supabase.auth.signUp({ email, password });
   };
 
-  // Sign out the user
+  // Sign out
   const signOut = async () => {
     return supabase.auth.signOut();
   };
 
-  return { session, user, profile, loading, signIn, signUp, signOut };
+  return {
+    session,
+    user,
+    profile,
+    loading,
+    signIn,
+    signUp,
+    signOut,
+  };
 }
 
 // Post-related hooks
 export function usePosts(page = 1, pageSize = 10) {
-  // Fetch posts with pagination
   const [state, setState] = useState<ResponseState<Post[]>>({
     data: [],
     loading: true,
     error: null,
   });
 
-  // Fetch posts when the page or pageSize changes
   useEffect(() => {
     async function fetchPosts() {
-      // Check if page and pageSize are valid numbers
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
@@ -112,8 +129,15 @@ export function usePosts(page = 1, pageSize = 10) {
         const { data, error } = await supabase
           .from('posts')
           .select(
-            `id, title, slug, excerpt, featured_image, published_at, profiles(id, username, display_name, avatar_url)
             `
+            id, 
+            title, 
+            slug, 
+            excerpt, 
+            featured_image, 
+            published_at,
+            profiles(id, username, display_name, avatar_url)
+          `
           )
           .eq('published', true)
           .order('published_at', { ascending: false })
@@ -121,7 +145,11 @@ export function usePosts(page = 1, pageSize = 10) {
 
         if (error) throw error;
 
-        setState({ data: data as Post[], loading: false, error: null });
+        setState({
+          data: data as Post[],
+          loading: false,
+          error: null,
+        });
       } catch (error) {
         console.error('Error fetching posts:', error);
         setState((prev) => ({
@@ -134,19 +162,78 @@ export function usePosts(page = 1, pageSize = 10) {
 
     fetchPosts();
   }, [page, pageSize]);
+
   return state;
 }
 
-// Fetch a single post by slug
-export function useCatagories() {
-  // Fetch categories
+export function usePost(slug: string | null) {
+  const [state, setState] = useState<ResponseState<Post | null>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!slug) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+
+    async function fetchPost() {
+      try {
+        setState((prev) => ({ ...prev, loading: true, error: null }));
+
+        const { data, error } = await supabase
+          .from('posts')
+          .select(
+            `
+            id, 
+            title, 
+            slug, 
+            content, 
+            excerpt, 
+            featured_image, 
+            published, 
+            published_at,
+            profiles(id, username, display_name, avatar_url),
+            post_categories(
+              categories(id, name, slug)
+            )
+          `
+          )
+          .eq('slug', slug)
+          .single();
+
+        if (error) throw error;
+
+        setState({
+          data: data as Post,
+          loading: false,
+          error: null,
+        });
+      } catch (error) {
+        console.error(`Error fetching post with slug '${slug}':`, error);
+        setState({
+          data: null,
+          loading: false,
+          error: 'Failed to load post',
+        });
+      }
+    }
+
+    fetchPost();
+  }, [slug]);
+
+  return state;
+}
+
+export function useCategories() {
   const [state, setState] = useState<ResponseState<Category[]>>({
     data: [],
     loading: true,
     error: null,
   });
 
-  // Fetch categories when the component mounts
   useEffect(() => {
     async function fetchCategories() {
       try {
@@ -199,14 +286,23 @@ export function useComments(postId: string | null) {
       const { data, error } = await supabase
         .from('comments')
         .select(
-          `id, content, created_at, profiles(id, username, display_name, avatar_url)`
+          `
+          id, 
+          content, 
+          created_at,
+          profiles(id, username, display_name, avatar_url)
+        `
         )
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      setState({ data: data as Comment[], loading: false, error: null });
+      setState({
+        data: data as Comment[],
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       console.error('Error fetching comments:', error);
       setState((prev) => ({
@@ -220,7 +316,7 @@ export function useComments(postId: string | null) {
   useEffect(() => {
     fetchComments();
 
-    // Set up a real-time subscription to listen for new comments
+    // Set up real-time subscription for new comments
     if (!postId) return;
 
     const subscription = supabase
@@ -246,7 +342,12 @@ export function useComments(postId: string | null) {
 
   const addComment = useCallback(
     async (content: string) => {
-      if (!postId)
+      if (!postId) return { error: { message: 'No post selected' } };
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user)
         return { error: { message: 'You must be logged in to comment' } };
 
       return supabase.from('comments').insert({
