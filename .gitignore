@@ -34,3 +34,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#RTM
+RTM
+
+# Test files
+src/app/test/
+
+# Scripts
+scripts/
